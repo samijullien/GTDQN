@@ -1,0 +1,33 @@
+title = "Common configuration"
+
+[training_args]
+batch_size = 512
+gamma = 0.999
+eps_start = 0.95
+eps_end = 0.01
+eps_decay = 1000000
+target_update = 2
+learning_rate = 0.0001
+memory_size = 100000
+
+[args_model]
+input_size = 269
+conv_size = 250
+hidden_sizes = [100, 50, 25, 50, 75, 100, 200, 250]
+n_kernels = 50
+
+[args_env]
+assortment_size = 100 
+max_stock = 250
+freshness = 4
+forecast_bias = 0.0
+bucket_customers = [500.0, 900.0]
+covariance_buckets = [1.0, -0.25, -0.25, 1.0]
+    [args_env.utility_weights] 
+    alpha = 1.0
+    beta = 1.0
+    gamma = 0.0
+
+[global]
+proj_name = 'GLDQN'
+tags = ['gqldqn','uncertaintymod']

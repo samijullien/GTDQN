@@ -51,8 +51,8 @@ class StoreEnv(gym.Env):
         substep_count=2,
         bucket_customers=[500.0, 900.0],
         covariance_buckets=[1.0, 0.0, 0.0, 1.0],
-        forecastBias=0.0,
-        forecastVariance=0.0001,
+        forecast_bias=0.0,
+        forecast_variance=0.0001,
         freshness=2,
         utility_function="linear",
         utility_weights={"alpha": 1.0, "beta": 1.0, "gamma": 0.0},
@@ -101,7 +101,7 @@ class StoreEnv(gym.Env):
         self.assortment.base_demand = (
             self.assortment.base_demand.detach() / self.bucket_customers.sum()
         )
-        self._bias = d.normal.Normal(forecastBias, forecastVariance)
+        self._bias = d.normal.Normal(forecast_bias, forecast_variance)
 
         self.expected_mean = self.bucket_customers.sum().view(-1, 1) * (
             self.assortment.base_demand
@@ -128,10 +128,10 @@ class StoreEnv(gym.Env):
         self._phase = 2 * pi * torch.rand(assortment_size)
         self._phase2 = 2 * pi * torch.rand(assortment_size)
         self.forecast_horizon = forecast_horizon * substep_count
-        loc = forecastBias * torch.ones(self.forecast_horizon)
+        loc = forecast_bias * torch.ones(self.forecast_horizon)
         scale = torch.diag(
             torch.arange(1, 1 + forecast_horizon).repeat_interleave(2)
-            * forecastVariance
+            * forecast_variance
         )
 
         self.forecast_drift = d.multivariate_normal.MultivariateNormal(loc, scale)

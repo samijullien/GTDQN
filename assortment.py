@@ -5,7 +5,7 @@ import pandas as pd
 
 import torch
 import numpy
-from util import Rscript
+#from util import Rscript
 
 if torch.cuda.is_available():
     torch.set_default_tensor_type(torch.cuda.DoubleTensor)

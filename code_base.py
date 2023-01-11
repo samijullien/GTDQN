@@ -83,7 +83,7 @@ class PinballHuber(nn.Module):
     def forward(self, policy_quantiles, target_quantiles):
         b_size = policy_quantiles.shape[0]
         target_quantiles_expanded = target_quantiles.repeat(1, self.size)
-        policy_quantiles_expanded = policy_quantiles.repeat_interleave(self.size).view(b_size, -1)
+        policy_quantiles_expanded = policy_quantiles.repeat_interleave(self.size,1)
         indic = (target_quantiles_expanded > policy_quantiles_expanded).type(torch.uint8)
         multiplier = torch.abs(self.quantile_mask - indic)
         huber = F.huber_loss(target_quantiles_expanded, policy_quantiles_expanded, delta=self.delta, reduction = 'none')/self.delta
@@ -101,7 +101,7 @@ class ExpectileLoss(nn.Module):
         policy_expectiles_expanded = policy_expectiles.repeat_interleave(self.size).view(b_size, -1)
         indic = (target_expectiles_expanded > policy_expectiles_expanded).type(torch.uint8)
         multiplier = torch.abs(self.expectile_mask - indic)
-        squared_loss = F.huber_loss(target_expectiles_expanded, policy_expectiles_expanded, reduction = 'none')
+        squared_loss = F.MSELoss(target_expectiles_expanded, policy_expectiles_expanded, reduction = 'none')
         return (multiplier * squared_loss).mean().double()
 
 
@@ -125,6 +125,21 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
+class DualNet(nn.Module):
+    def __init__(self, model_args, name, device):
+        super().__init__()
+        net_type = globals()[name]
+        self.policy_net = net_type(**model_args).to(device)
+        self.target_net = net_type(**model_args).to(device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
+
+    def forward(self, o, net):
+        if net == "policy":
+            return self.policy_net(o)
+        else:
+            return self.target_net(o)
+
 
 class DQN(nn.Module):
     def __init__(
@@ -134,6 +149,7 @@ class DQN(nn.Module):
         hidden_sizes,
         n_kernels,
         output_size=251,
+        quantiles=None,
         nonlinearity=torch.nn.SELU,
     ):
         super().__init__()
@@ -183,6 +199,7 @@ class ParameterDQN(nn.Module):
         hidden_sizes,
         n_kernels,
         output_size=251,
+        quantiles=None,
         nonlinearity=torch.nn.SELU,
     ):
         super().__init__()
@@ -232,22 +249,6 @@ class ParameterDQN(nn.Module):
         return self._output_size
 
 
-class DualNet(nn.Module):
-    def __init__(self, kwargsModel, name, device):
-        super().__init__()
-        net_type = globals()[name]
-        self.policy_net = net_type(**kwargsModel).to(device)
-        self.target_net = net_type(**kwargsModel).to(device)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.target_net.eval()
-
-    def forward(self, o, net):
-        if net == "policy":
-            return self.policy_net(o)
-        else:
-            return self.target_net(o)
-
-
 class C51(nn.Module):
     def __init__(
         self,
@@ -256,6 +257,7 @@ class C51(nn.Module):
         hidden_sizes,
         n_kernels,
         output_size=251,
+        quantiles=None,
         nonlinearity=torch.nn.SELU,
         n_atoms=51,
     ):
@@ -357,7 +359,7 @@ class ERDQN(nn.Module):
         n_kernels,
         output_size=251,
         nonlinearity=torch.nn.SELU,
-        expectiles=[0.01, 0.25, 0.5, 0.75, 0.99],
+        quantiles=[0.01, 0.25, 0.5, 0.75, 0.99],
     ):
         super().__init__()
         self._conv_size = conv_size
@@ -365,7 +367,7 @@ class ERDQN(nn.Module):
         self.normL = torch.nn.LayerNorm(input_size)
         self._transf_in_size = input_size - conv_size + n_kernels
         self.activ = nn.SELU()
-        self.expectiles = expectiles
+        self.expectiles = quantiles
         if isinstance(hidden_sizes, int):
             hidden_sizes = [hidden_sizes]
         hidden_layers = [
@@ -399,9 +401,9 @@ class ERDQN(nn.Module):
 
 
 class DQN_Agent(object):
-    def __init__(self, kwargsModel, training_args, device, n_actions):
+    def __init__(self, model_args, training_args, device, n_actions):
         self.device = device
-        self.nets = DualNet(kwargsModel, name="DQN", device=self.device)
+        self.nets = DualNet(model_args, name="DQN", device=self.device)
         self.nets.target_net.load_state_dict(self.nets.policy_net.state_dict())
         for key in training_args:
             setattr(self, key, training_args[key])
@@ -454,7 +456,7 @@ class DQN_Agent(object):
 class C51_Agent(object):
     def __init__(
         self,
-        kwargsModel,
+        model_args,
         training_args,
         device,
         n_actions,
@@ -464,7 +466,7 @@ class C51_Agent(object):
         memory_size=100000,
     ):
         self.device = device
-        self.nets = DualNet(kwargsModel, name="C51", device=self.device)
+        self.nets = DualNet(model_args, name="C51", device=self.device)
         self.nets.target_net.load_state_dict(self.nets.policy_net.state_dict())
         self.optimizer = optim.RMSprop(self.nets.policy_net.parameters())
         for key in training_args:
@@ -535,9 +537,9 @@ class C51_Agent(object):
 
 class QRDQN_Agent(object):
     def __init__(
-        self, kwargsModel, training_args, device, n_actions, memory_size=100000
+        self, model_args, training_args, device, n_actions, memory_size=100000
     ):
-        self.nets = DualNet(kwargsModel, name="QRDQN", device=device)
+        self.nets = DualNet(model_args, name="QRDQN", device=device)
 
         # self.scheduler = optim.lr_scheduler.CyclicLR(self.optimizer,base_lr=0.00001, max_lr=0.1, cycle_momentum=False)
         for key in training_args:
@@ -547,7 +549,7 @@ class QRDQN_Agent(object):
         self.memory = ReplayMemory(memory_size)
         self.n_actions = n_actions
         self.device = device
-        self.quantiles = torch.tensor([0.01, 0.25, 0.5, 0.75, 0.99])
+        self.quantiles = model_args['quantiles']
         self.criterion = PinballHuber(quantiles=self.quantiles)
 
     def select_action(self, state, eval_mode=False):
@@ -602,9 +604,9 @@ class QRDQN_Agent(object):
 
 class ERDQN_Agent(object):
     def __init__(
-        self, kwargsModel, training_args, device, n_actions, memory_size=100000
+        self, model_args, training_args, device, n_actions, memory_size=100000
     ):
-        self.nets = DualNet(kwargsModel, name="ERDQN", device=device)
+        self.nets = DualNet(model_args, name="ERDQN", device=device)
 
         # self.scheduler = optim.lr_scheduler.CyclicLR(self.optimizer,base_lr=0.00001, max_lr=0.1, cycle_momentum=False)
         for key in training_args:
@@ -614,7 +616,7 @@ class ERDQN_Agent(object):
         self.memory = ReplayMemory(memory_size)
         self.n_actions = n_actions
         self.device = device
-        self.expectiles = torch.tensor([0.01, 0.25, 0.5, 0.75, 0.99])
+        self.expectiles = self.quantiles = model_args['quantiles']
         self.criterion = ExpectileLoss(expectiles=self.expectiles)
         self.mean_index = len(self.expectiles)//2+1
 
@@ -669,14 +671,13 @@ class ERDQN_Agent(object):
 class GLDQN_Agent(object):
     def __init__(
         self,
-        kwargsModel,
+        model_args,
         training_args,
         device,
         n_actions,
-        quantiles=torch.tensor([0.01, 0.25, 0.5, 0.75, 0.99]),
     ):
         self.device = device
-        self.nets = DualNet(kwargsModel, name="ParameterDQN", device=self.device)
+        self.nets = DualNet(model_args, name="ParameterDQN", device=self.device)
         for key in training_args:
             setattr(self, key, training_args[key])
         self.optimizer = optim.RMSprop(
@@ -685,7 +686,7 @@ class GLDQN_Agent(object):
         self.steps_done = 0
         self.memory = ReplayMemory(self.memory_size)
         self.n_actions = n_actions
-        self.quantiles = quantiles
+        self.quantiles = model_args['quantiles']
         self.criterion = PinballHuber(quantiles=self.quantiles, delta=1.0)
 
     def select_action(self, state, eval_mode=False):
@@ -698,6 +699,7 @@ class GLDQN_Agent(object):
             with torch.inference_mode():
                 lambdas = self.nets(state, "policy")
                 means = lambdas[0]+(1/(1+lambdas[1]) - 1/(1+lambdas[2]))/lambdas[3]
+                #means = torch.stack([gld_quantile(q, *lambdas) for q in self.quantiles],0).mean(0)
                 return means.max(1)[1]
         else:
             return torch.tensor(
@@ -718,9 +720,11 @@ class GLDQN_Agent(object):
             for lambd in self.nets(state_batch, "policy")
         ]
         quantiles = [gld_quantile(q, *lambdas) for q in self.quantiles]
+        
         state_action_values = torch.stack(quantiles,1)
         lambdas = self.nets(next_state_batch, "target")
         means = lambdas[0]+(1/(1+lambdas[1]) - 1/(1+lambdas[2])/lambdas[3])
+        #means = torch.stack([gld_quantile(q, *lambdas) for q in self.quantiles],0).mean(0)
         optimal_action = means.max(1)[1]
         lambdas = [
             torch.diag(lambd[:, optimal_action])
