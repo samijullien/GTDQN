@@ -5,7 +5,7 @@ import pandas as pd
 
 import torch
 import numpy
-#from util import Rscript
+from util import Rscript
 
 if torch.cuda.is_available():
     torch.set_default_tensor_type(torch.cuda.DoubleTensor)
@@ -13,6 +13,14 @@ if torch.cuda.is_available():
 
 class Assortment:
     def __init__(self, size, freshness=1, seed=None):
+        """Create the assortment, a set of items. 
+        Items are represented by vectors that 
+
+        Args:
+            size (_type_): _description_
+            freshness (int, optional): _description_. Defaults to 1.
+            seed (_type_, optional): _description_. Defaults to None.
+        """
         self.size = size
         self.freshness = freshness
         self.seed = seed

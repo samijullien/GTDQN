@@ -11,53 +11,42 @@ if torch.cuda.is_available():
     torch.set_default_tensor_type(torch.cuda.DoubleTensor)
 
 
-def compute_cumulants(moments):
-    res = moments.clone()
-    res[1] = res[1] - res[0] ** 2
-    res[2] = moments[2] - 3 * moments[1] * moments[0] + 2 * moments[0] ** 3
-    res[3] = (
-        moments[3]
-        - 4 * moments[2] * moments[0]
-        - 3 * moments[1] ** 2
-        + 12 * moments[1] * moments[2]
-        - 6 * moments[0] ** 4
-    )
-    return res
-
-def compute_moments(cumulants):
-    res = cumulants.clone()
-    res[1] = res[1] + res[0] ** 2
-    res[2] = cumulants[2] + 3 * cumulants[1] * cumulants[0] + cumulants[0] ** 3
-    res[3] = (
-        cumulants[3]
-        + 4 * cumulants[2] * cumulants[0]
-        + 3 * cumulants[1] ** 2
-        + 6 * cumulants[1] * cumulants[0] ** 2
-        + cumulants[0] ** 4
-    )
-    return res
-
-def centered_compute_cumulants(moments):
-    res = moments.clone()
-    res[-1] = res[-1] - 3 * res[-2] ** 2
-    return res
-
-def centered_compute_moments(cumulants):
-    res = cumulants.clone()
-    res[-1] = res[-1] + 3 * res[-2] ** 2
-    return res
 
 def lognorm_cdf_loss(moments, target):
     loss = torch.mean((moments - target * 2) ** 3)
     return loss
 
 def gld_quantile(quantiles, l1, l2, l3, l4):
+    """Compute the values of specified quantile levels from a generalized
+    lambda distribution described by its lambda parameters.
+
+    Args:
+        quantiles (torch.tensor): set of quantiles to be evaluated
+        l1 (torch.tensor): Location parameter of the GLD
+        l2 (torch.tensor): Scale parameter of the GLD
+        l3 (torch.tensor): First shape parameter of the GLD
+        l4 (torch.tensor): Second shape parameter of the GLD
+
+    Returns:
+        torch.tensor: Values of the quantiles according to the desired GLD
+    """
     a = (quantiles ** l3.clamp(-50, 50)).clamp(-1000, 1000)
     b = ((1 - quantiles) ** l4.clamp(-50, 50)).clamp(-1000, 1000)
     pos = torch.sign(l2) * 0.1
     return (l1 + (1 / (l2 + pos)) * (a - b)).clamp(-1000, 1000)
 
 def pinball_loss(quantiles, predicted_values, actual_value):
+    """Function to compute the pinball (or quantile) loss
+    between a predicted value and an actual realization 
+
+    Args:
+        quantiles (torch.tensor): quantiles to be evaluated
+        predicted_values (torch.tensor): Predictions of quantile values made by a model
+        actual_value (torch.tensor): realizations of the random variable 
+
+    Returns:
+        torch.tensor: _description_
+    """
     errors = [
         (actual_value - predicted_values) * q + F.relu(predicted_values - actual_value)
         for q in quantiles
@@ -65,7 +54,14 @@ def pinball_loss(quantiles, predicted_values, actual_value):
     return (sum(errors) / len(quantiles)).mean()
 
 class PinballLoss(nn.Module):
+    """Class representing the pinball loss used in quantile regression.
+    """
     def __init__(self, quantiles):
+        """Creation of an instance of the class
+
+        Args:
+            quantiles (torch.tensor): quantiles to be used in the loss when evaluating an input and a target.
+        """
         super(PinballLoss, self).__init__()
         self.quantiles = quantiles
         self.size = len(quantiles)
@@ -74,14 +70,30 @@ class PinballLoss(nn.Module):
         return pinball_loss(self.quantiles, input, target)
 
 class PinballHuber(nn.Module):
+    """Huber version of the pinball loss: it is an L2 around 0, instead of an L1.
+
+    """
     def __init__(self, quantiles, delta=1.0):
+        """
+        Args:
+            quantiles (torch.tensor): quantiles to be evaluated in the loss
+            delta (float, optional): _description_. Defaults to 1.0.
+        """
         super(PinballHuber, self).__init__()
         self.delta = delta
         self.quantiles = quantiles
         self.size = len(quantiles)
         self.quantile_mask = quantiles.repeat(self.size)
     def forward(self, policy_quantiles, target_quantiles):
-        b_size = policy_quantiles.shape[0]
+        """Compuration of the huber pinball loss.
+
+        Args:
+            policy_quantiles (_type_): _description_
+            target_quantiles (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         target_quantiles_expanded = target_quantiles.repeat(1, self.size)
         policy_quantiles_expanded = policy_quantiles.repeat_interleave(self.size,1)
         indic = (target_quantiles_expanded > policy_quantiles_expanded).type(torch.uint8)
@@ -96,9 +108,8 @@ class ExpectileLoss(nn.Module):
         self.size = len(expectiles)
         self.expectile_mask = expectiles.repeat(self.size)
     def forward(self, policy_expectiles, target_expectiles):
-        b_size = policy_expectiles.shape[0]
         target_expectiles_expanded = target_expectiles.repeat(1, self.size)
-        policy_expectiles_expanded = policy_expectiles.repeat_interleave(self.size).view(b_size, -1)
+        policy_expectiles_expanded = policy_expectiles.repeat_interleave(self.size,1)
         indic = (target_expectiles_expanded > policy_expectiles_expanded).type(torch.uint8)
         multiplier = torch.abs(self.expectile_mask - indic)
         squared_loss = F.MSELoss(target_expectiles_expanded, policy_expectiles_expanded, reduction = 'none')

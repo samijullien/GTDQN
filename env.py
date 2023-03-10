@@ -12,7 +12,8 @@ if torch.cuda.is_available():
     torch.cuda.set_device("cuda:0")
 
 from assortment import Assortment
-
+import utilities
+import util
 
 def save__init__args(values, underscore=False, overwrite=False, subclass_only=False):
     prefix = "_" if underscore else ""
@@ -62,7 +63,7 @@ class StoreEnv(gym.Env):
         lead_time_fast=0,  # To have a different lead time at end of day
         seed=None,
     ):
-        save__init__args(locals(), underscore=True)
+        util.save__init__args(locals(), underscore=True)
         self.bucket_customers = torch.tensor(bucket_customers, dtype=torch.float64)
         self.bucket_cov = torch.tensor(covariance_buckets, dtype=torch.float64).view(
             len(bucket_customers), len(bucket_customers)
@@ -145,13 +146,13 @@ class StoreEnv(gym.Env):
             ),
         )
         if utility_function == "linear":
-            self.utility_function = LinearUtility(**utility_weights)
-            # elif utility_function == "loglinear":
-            #    self.utility_function = LogLinearUtility(**utility_weights)
-            # elif utility_function == "cobbdouglas":
-            #    self.utility_function = CobbDouglasUtility(**utility_weights)
-            # elif utility_function == "homogeneous":
-            #    self.utility_function = HomogeneousReward(**utility_weights)
+            self.utility_function = utilities.LinearUtility(**utility_weights)
+        elif utility_function == "loglinear":
+            self.utility_function = utilities.LogLinearUtility(**utility_weights)
+        elif utility_function == "cobbdouglas":
+            self.utility_function = utilities.CobbDouglasUtility(**utility_weights)
+        elif utility_function == "homogeneous":
+            self.utility_function = utilities.HomogeneousReward(**utility_weights)
         else:
             self.utility_function = utility_function
         self._updateEnv()
