@@ -15,33 +15,6 @@ from assortment import Assortment
 import utilities
 import util
 
-def save__init__args(values, underscore=False, overwrite=False, subclass_only=False):
-    prefix = "_" if underscore else ""
-    self = values["self"]
-    args = list()
-    Classes = type(self).mro()
-    if subclass_only:
-        Classes = Classes[:1]
-    for Cls in Classes:  # class inheritances
-        if "__init__" in vars(Cls):
-            args += getfullargspec(Cls.__init__).args[1:]
-    for arg in args:
-        attr = prefix + arg
-        if arg in values and (not hasattr(self, attr) or overwrite):
-            setattr(self, attr, values[arg])
-
-
-class LinearUtility:
-    def __init__(
-        self, alpha, beta, gamma,
-    ):
-        save__init__args(locals(), underscore=True)
-
-    def reward(
-        self, sales, waste, availability,
-    ):
-        return sales * self._alpha - waste * self._beta + availability * self._gamma
-
 
 class StoreEnv(gym.Env):
     def __init__(
@@ -59,7 +32,7 @@ class StoreEnv(gym.Env):
         utility_weights={"alpha": 1.0, "beta": 1.0, "gamma": 0.0},
         characDim=4,
         forecast_horizon=7,  # How many days ahead do we haev a forecast?
-        lead_time=1,  # Defines how quickly the orders goes through the buffer - also impacts the relevance of the observation
+        lead_time=1,  # Defines how quickly the orders goes through the buffer
         lead_time_fast=0,  # To have a different lead time at end of day
         seed=None,
     ):
@@ -362,7 +335,10 @@ class StoreEnv(gym.Env):
             self._buffer_fast.append(torch.zeros(self._assortment_size))
 
     def transportation_cost(
-        self, units, transport_size=300000, transport_cost=250.0,
+        self,
+        units,
+        transport_size=300000,
+        transport_cost=250.0,
     ):
         volume = units * self.assortment.dims.t().sum(0)
         number_of_trucks = np.trunc(volume.sum() / transport_size) + 1
