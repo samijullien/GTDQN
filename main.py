@@ -57,13 +57,12 @@ def parse_args():
 
     parser.add_argument
     args = parser.parse_args()
-    # fmt: on
     return args
 
 
-def train(model, run_name, env_args, num_episodes):
+def train(model, run_name, env_args, num_episodes, val_seed):
     for i_episode in tqdm(range(num_episodes)):
-        e = env.StoreEnv(**env_args, seed=i_episode)
+        e = env.StoreEnv(**env_args, seed=val_seed * i_episode)
         done = False
         state = e.get_obs()
         while not done:
@@ -94,12 +93,12 @@ def train(model, run_name, env_args, num_episodes):
     print("Complete")
 
 
-def evaluate(model, run_name, args_env, n_env, steps):
+def evaluate(model, run_name, n_env, steps, val_seed):
     with torch.inference_mode():
         overall_sales = []
         overall_waste = []
         for env_id in tqdm(range(n_env)):
-            e = env.StoreEnv(**env_args, seed=1000 + env_id)
+            e = env.StoreEnv(**env_args, seed=val_seed * 101 *  (env_id+1))
             state = e.get_obs()
             rewards = []
             for i in range(steps):
@@ -117,12 +116,12 @@ def evaluate(model, run_name, args_env, n_env, steps):
         torch.save(torch.cat(overall_waste).cpu(), "res/waste" + run_name + ".pt")
 
 
-def evaluate_baseline(env_args, n_env, steps):
+def evaluate_baseline(env_args, n_env, steps, val_seed):
     with torch.inference_mode():
         overall_sales = []
         overall_waste = []
         for env_id in tqdm(range(n_env)):
-            e = env.StoreEnv(**env_args, seed=1000 + env_id)
+            e = env.StoreEnv(**env_args, seed=val_seed * 101 *  (env_id+1))
             state = e.get_obs()
             rewards = []
             for i in range(steps):
@@ -149,14 +148,14 @@ if __name__ == "__main__":
     torch.set_default_tensor_type(torch.cuda.DoubleTensor)
     config = toml.load('config.toml')
     args = parse_args()
-
+    config['global']['agent_name'] = args.agent_name
     training_args = config["training_args"]
     args_model = config["args_model"]
     env_args = config["args_env"]
     env_args['forecast_variance'] = args.forecast_variance
     e = env.StoreEnv(seed=0)
     n_actions = e._action_space.n
-    wandb.config = config    
+    wandb.config = config
     print(torch.cuda.device_count())
     quantiles = torch.arange(0.0,1,1/args.n_quantiles)[1:]
     args_model['quantiles'] = torch.arange(0.0,1,1/args.n_quantiles)[1:]
@@ -168,8 +167,10 @@ if __name__ == "__main__":
         tags=config["global"]["tags"],
     )
     agent = getattr(agents, args.agent_name)
+    torch.manual_seed(args.seed)
     model = agent(args_model, training_args, device, n_actions)
-    train(model, run_name, env_args, 60)
-    evaluate(model, run_name, env_args, 30, 2000)
-    evaluate_baseline(env_args, 30, 2000)
+    train(model, run_name, env_args, 20, args.seed)
+    evaluate(model, run_name, 30, 2000, args.seed)
+    evaluate_baseline(env_args, 30, 2000, args.seed)
+
 
