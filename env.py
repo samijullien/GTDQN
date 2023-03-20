@@ -265,22 +265,26 @@ class StoreEnv(gym.Env):
 
     @torch.inference_mode()
     def _sellUnits(self, units):
+        #Get the number of sales
         sold = torch.min(self.stock.ge(1).sum(1).double(), units)
+        #Compute availability
         availability = self.stock.ge(1).sum(1).double().div(units).clamp(0, 1)
+        #Items with no demand are available
         availability[torch.isnan(availability)] = 1.0
-        reward = (
+        #Compute sales
+        sales = (
             sold.mul_(2)
             .sub_(units)
             .mul(self.assortment.selling_price - self.assortment.cost)
         )
         (p, n) = self.stock.shape
+        #Update stock
         stock_vector = self.stock.sort(1, descending=True)[0].view(-1)
         to_keep = n - units
-
         interleaver = torch.stack((units, to_keep)).t().reshape(2, p).view(-1).long()
         binary_vec = torch.tensor([0.0, 1]).repeat(p).repeat_interleave(interleaver)
         self.stock = binary_vec.mul_(stock_vector).view(p, n)
-        return (reward, availability)
+        return (sales, availability)
 
     @torch.inference_mode()
     def _waste(self):
