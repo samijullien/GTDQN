@@ -352,7 +352,6 @@ class StoreEnv(gym.Env):
         total_cost = number_of_trucks * transport_cost
         return volume / volume.sum() * total_cost
 
-    # ##########################################################################
     # Properties
 
     @property

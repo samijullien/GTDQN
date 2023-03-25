@@ -686,7 +686,7 @@ class ERDQN_Agent(object):
         self.optimizer.step()
 
 
-class GLDQN_Agent(object):
+class GTDQN_Agent(object):
     def __init__(
         self,
         model_args,

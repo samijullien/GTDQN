@@ -29,5 +29,5 @@ covariance_buckets = [1.0, -0.25, -0.25, 1.0]
     gamma = 0.0
 
 [global]
-proj_name = 'GLDQN'
-tags = ['gqldqn','uncertaintymod']
+proj_name = 'GTDQN'
+tags = ['gtdqn','uncertaintymod']
